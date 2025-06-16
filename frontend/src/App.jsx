@@ -9,7 +9,7 @@ import Chat from './components/Chat';
 import ChatHistory from './components/ChatHistory';
 import Profile from './components/Profile';
 import About from './pages/About';
-import Contact from './pages/Contact';
+import Contact from './components/Contact';
 import './App.css';
 
 // Protected Route component

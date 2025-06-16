@@ -40,25 +40,31 @@ router.get('/profile', auth, async (req, res) => {
 // Update user profile
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { username, email } = req.body;
+    const { user } = req.body; // Frontend sends data wrapped in a 'user' object
+    const { username, email, age, gender, medicalHistory } = user;
     
     // Check if username or email is already taken
-    if (username !== req.user.username || email !== req.user.email) {
-      const existingUser = await User.findOne({
-        $or: [
-          { username, _id: { $ne: req.user._id } },
-          { email, _id: { $ne: req.user._id } }
-        ]
-      });
-      
-      if (existingUser) {
-        return res.status(400).json({ message: 'Username or email already taken' });
+    if (username && username !== req.user.username) {
+      const existingUser = await User.findOne({ username });
+      if (existingUser && existingUser._id.toString() !== req.user._id.toString()) {
+        return res.status(400).json({ message: 'Username already taken' });
+      }
+    }
+
+    if (email && email !== req.user.email) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser && existingUser._id.toString() !== req.user._id.toString()) {
+        return res.status(400).json({ message: 'Email already taken' });
       }
     }
     
-    // Update user
-    req.user.username = username || req.user.username;
-    req.user.email = email || req.user.email;
+    // Update user fields
+    if (username !== undefined) req.user.username = username.trim();
+    if (email !== undefined) req.user.email = email.trim();
+    if (age !== undefined) req.user.age = age ? parseInt(age) : null; // Handle potential empty string or non-numeric
+    if (gender !== undefined) req.user.gender = gender.trim();
+    if (medicalHistory !== undefined) req.user.medicalHistory = medicalHistory.trim();
+
     await req.user.save();
     
     res.json({
@@ -66,10 +72,14 @@ router.put('/profile', auth, async (req, res) => {
       user: {
         id: req.user._id,
         username: req.user.username,
-        email: req.user.email
+        email: req.user.email,
+        age: req.user.age,
+        gender: req.user.gender,
+        medicalHistory: req.user.medicalHistory
       }
     });
   } catch (error) {
+    console.error('Error updating profile:', error);
     res.status(500).json({ message: 'Error updating profile', error: error.message });
   }
 });

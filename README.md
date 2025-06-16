@@ -5,7 +5,9 @@ A MERN stack application for health-related conversations with an AI chatbot.
 ## Features
 
 - User authentication (signup/signin)
-- Real-time chat interface
+- Real-time chat interface with AI (Google Gemini)
+- On-demand translation of AI responses to Marathi
+- Improved formatting of AI responses for readability
 - Chat history
 - User profile
 - Responsive design
@@ -14,7 +16,7 @@ A MERN stack application for health-related conversations with an AI chatbot.
 ## Tech Stack
 
 - Frontend: React with TypeScript, Vite, Chakra UI
-- Backend: Node.js, Express.js
+- Backend: Node.js, Express.js, Google Gemini API, Google Cloud Translation API
 - Database: MongoDB
 - Authentication: JWT
 
@@ -37,6 +39,8 @@ A MERN stack application for health-related conversations with an AI chatbot.
    PORT=5000
    MONGODB_URI=mongodb://localhost:27017/health-chatbot
    JWT_SECRET=your-secret-key-here
+   GEMINI_API_KEY=your-gemini-api-key
+   GOOGLE_TRANSLATE_API_KEY=your-google-translate-api-key
    ```
 
 4. Start MongoDB locally or use MongoDB Atlas

@@ -9,18 +9,26 @@ const chats = new Map();
 // Authentication middleware
 const auth = async (req, res, next) => {
     try {
+        console.log('Auth middleware - Headers:', req.headers);
         const token = req.header('Authorization')?.replace('Bearer ', '');
         
         if (!token) {
-            return res.status(401).json({ error: 'Authentication required' });
+            console.log('No token provided');
+            return res.status(401).json({ message: 'Authentication required' });
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
-        req.user = { id: decoded.userId };
-        next();
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
+            req.user = { id: decoded.userId };
+            console.log('Token verified for user:', req.user.id);
+            next();
+        } catch (jwtError) {
+            console.error('JWT verification failed:', jwtError);
+            return res.status(401).json({ message: 'Invalid token' });
+        }
     } catch (error) {
         console.error('Auth middleware error:', error);
-        res.status(401).json({ error: 'Please authenticate' });
+        res.status(401).json({ message: 'Please authenticate' });
     }
 };
 
@@ -42,53 +50,57 @@ router.get('/history', auth, async (req, res) => {
 // Send message
 router.post('/', auth, async (req, res) => {
     try {
-        const { message } = req.body;
+        console.log('Received chat request:', {
+            body: req.body,
+            user: req.user,
+            headers: req.headers
+        });
+
+        const { messages } = req.body;
         
-        if (!message) {
-            return res.status(400).json({ error: 'Message is required' });
+        if (!messages || !Array.isArray(messages) || messages.length === 0) {
+            console.log('Invalid messages format:', messages);
+            return res.status(400).json({ message: 'Messages array is required' });
         }
 
-        console.log('Received message:', message);
+        console.log('Processing messages:', messages);
         console.log('From user:', req.user.id);
-        
-        const messages = [
-            {
-                role: "user",
-                content: message
-            }
-        ];
 
-        console.log('Sending to chat service:', messages);
         const response = await chatService.getChatResponse(messages);
         console.log('Chat service response:', response);
 
         if (!response || !response.choices || !response.choices[0]) {
+            console.error('Invalid response format:', response);
             throw new Error('Invalid response from chat service');
         }
 
-        const aiResponse = response.choices[0].message.content;
-        console.log('AI response:', aiResponse);
-        
         // Save chat to in-memory store
         const chatId = Date.now().toString();
         const chat = {
             id: chatId,
             userId: req.user.id,
-            message: message,
-            response: aiResponse,
+            message: messages[messages.length - 1].content,
+            response: response.choices[0].message.content,
             timestamp: new Date()
         };
         chats.set(chatId, chat);
         
-        res.json({
-            message: aiResponse
-        });
+        res.json(response);
     } catch (error) {
-        console.error('Error sending message:', error);
-        res.status(500).json({ 
-            error: 'Failed to send message',
-            details: error.message 
-        });
+        console.error('Error in chat route:', error);
+        console.error('Error stack:', error.stack);
+        
+        // Send a more detailed error response in development
+        const errorResponse = {
+            message: error.message || 'Failed to send message',
+            details: process.env.NODE_ENV === 'development' ? {
+                stack: error.stack,
+                name: error.name,
+                code: error.code
+            } : undefined
+        };
+        
+        res.status(500).json(errorResponse);
     }
 });
 
@@ -98,14 +110,14 @@ router.post('/translate', auth, async (req, res) => {
         const { text } = req.body;
         
         if (!text) {
-            return res.status(400).json({ error: 'Text to translate is required' });
+            return res.status(400).json({ message: 'Text to translate is required' });
         }
 
         const translation = await chatService.translateToMarathi(text);
         res.json(translation);
     } catch (error) {
         console.error('Translation error:', error);
-        res.status(500).json({ error: 'Failed to translate message' });
+        res.status(500).json({ message: 'Failed to translate message' });
     }
 });
 

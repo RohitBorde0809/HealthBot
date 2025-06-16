@@ -40,8 +40,37 @@ router.get('/profile', auth, async (req, res) => {
 // Update user profile
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { user } = req.body; // Frontend sends data wrapped in a 'user' object
+    const { user } = req.body;
+    
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid request format. User data is required.' });
+    }
+
     const { username, email, age, gender, medicalHistory } = user;
+    
+    // Validate email format if provided
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: 'Invalid email format' });
+      }
+    }
+
+    // Validate age if provided
+    if (age !== undefined && age !== '') {
+      const ageNum = parseInt(age);
+      if (isNaN(ageNum) || ageNum < 0 || ageNum > 120) {
+        return res.status(400).json({ message: 'Age must be a number between 0 and 120' });
+      }
+    }
+
+    // Validate gender if provided
+    if (gender !== undefined && gender !== '') {
+      const validGenders = ['male', 'female', 'other'];
+      if (!validGenders.includes(gender.toLowerCase())) {
+        return res.status(400).json({ message: 'Gender must be one of: male, female, other' });
+      }
+    }
     
     // Check if username or email is already taken
     if (username && username !== req.user.username) {
@@ -52,7 +81,7 @@ router.put('/profile', auth, async (req, res) => {
     }
 
     if (email && email !== req.user.email) {
-      const existingUser = await User.findOne({ email });
+      const existingUser = await User.findOne({ email: email.toLowerCase() });
       if (existingUser && existingUser._id.toString() !== req.user._id.toString()) {
         return res.status(400).json({ message: 'Email already taken' });
       }
@@ -60,9 +89,9 @@ router.put('/profile', auth, async (req, res) => {
     
     // Update user fields
     if (username !== undefined) req.user.username = username.trim();
-    if (email !== undefined) req.user.email = email.trim();
-    if (age !== undefined) req.user.age = age ? parseInt(age) : null; // Handle potential empty string or non-numeric
-    if (gender !== undefined) req.user.gender = gender.trim();
+    if (email !== undefined) req.user.email = email.toLowerCase().trim();
+    if (age !== undefined) req.user.age = age === '' ? null : parseInt(age);
+    if (gender !== undefined) req.user.gender = gender === '' ? '' : gender.toLowerCase().trim();
     if (medicalHistory !== undefined) req.user.medicalHistory = medicalHistory.trim();
 
     await req.user.save();
@@ -80,7 +109,10 @@ router.put('/profile', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating profile:', error);
-    res.status(500).json({ message: 'Error updating profile', error: error.message });
+    res.status(500).json({ 
+      message: 'Error updating profile', 
+      error: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred while updating your profile'
+    });
   }
 });
 
@@ -110,32 +142,43 @@ router.get('/me', async (req, res) => {
 // Register route
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { email, password } = req.body;
+
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Please enter a valid email address' });
+    }
+
+    // Password length validation
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
 
     // Check if user already exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ error: 'User already exists' });
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
     }
 
     // Create new user
-    user = new User({
-      name,
-      email,
+    const user = new User({
+      email: email.toLowerCase(),
       password
     });
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
-
-    // Save user
+    // Save user (password will be hashed by the pre-save middleware)
     await user.save();
 
     // Create token
     const token = jwt.sign(
       { userId: user._id },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || 'your_jwt_secret',
       { expiresIn: '24h' }
     );
 
@@ -143,13 +186,12 @@ router.post('/register', async (req, res) => {
       token,
       user: {
         id: user._id,
-        name: user.name,
         email: user.email
       }
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -158,22 +200,33 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check if user exists
-    const user = await User.findOne({ email });
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Please enter a valid email address' });
+    }
+
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
-      return res.status(400).json({ error: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     // Validate password
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     // Create token
     const token = jwt.sign(
       { userId: user._id },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || 'your_jwt_secret',
       { expiresIn: '24h' }
     );
 
@@ -181,13 +234,12 @@ router.post('/login', async (req, res) => {
       token,
       user: {
         id: user._id,
-        name: user.name,
         email: user.email
       }
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

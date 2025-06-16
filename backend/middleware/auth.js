@@ -11,7 +11,7 @@ const auth = async (req, res, next) => {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, 'your_jwt_secret'); // In production, use environment variable
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
 
     // Find the user in the database
     const user = await User.findById(decoded.userId);
@@ -21,16 +21,12 @@ const auth = async (req, res, next) => {
     }
 
     // Add user object to request
-    req.user = {
-      _id: user._id,
-      email: user.email,
-      name: user.name
-    };
+    req.user = user;
     
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
-    res.status(401).json({ error: 'Token is not valid' });
+    res.status(401).json({ error: 'Please authenticate' });
   }
 };
 

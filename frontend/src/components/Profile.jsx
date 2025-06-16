@@ -44,51 +44,26 @@ const Profile = ({ user, onLogout }) => {
         return;
       }
 
-      console.log('Fetching profile with token:', token);
       const response = await axios.get('http://localhost:5000/api/auth/profile', {
         headers: { Authorization: `Bearer ${token}` },
       });
       
-      console.log('Profile response:', response.data);
       setProfile({
-        username: response.data.user.username,
-        email: response.data.user.email,
+        username: response.data.user.username || '',
+        email: response.data.user.email || '',
         age: response.data.user.age || '',
         gender: response.data.user.gender || '',
         medicalHistory: response.data.user.medicalHistory || ''
       });
     } catch (error) {
-      console.error('Detailed error:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
+      console.error('Error fetching profile:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch profile',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
       });
-
-      if (error.response?.status === 401) {
-        toast({
-          title: 'Error',
-          description: 'Session expired. Please login again.',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
-      } else if (error.response?.status === 404) {
-        toast({
-          title: 'Error',
-          description: 'Profile endpoint not found. Please check server configuration.',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
-      } else {
-        toast({
-          title: 'Error',
-          description: `Failed to fetch profile: ${error.response?.data?.message || error.message}`,
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
-      }
     }
   };
 
@@ -118,18 +93,53 @@ const Profile = ({ user, onLogout }) => {
         return;
       }
 
-      // Format the data to match the server's expected format
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(profile.email)) {
+        toast({
+          title: 'Error',
+          description: 'Please enter a valid email address',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
+      // Validate age if provided
+      if (profile.age && (isNaN(profile.age) || profile.age < 0 || profile.age > 120)) {
+        toast({
+          title: 'Error',
+          description: 'Age must be a number between 0 and 120',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
+      // Validate gender if provided
+      if (profile.gender && !['male', 'female', 'other', ''].includes(profile.gender.toLowerCase())) {
+        toast({
+          title: 'Error',
+          description: 'Gender must be one of: male, female, other',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
       const updateData = {
-        user: {  // Wrap the data in a user object
+        user: {
           username: profile.username.trim(),
           email: profile.email.trim(),
-          ...(profile.age && profile.age.trim() !== '' && { age: parseInt(profile.age) }),
-          ...(profile.gender && profile.gender.trim() !== '' && { gender: profile.gender.trim() }),
-          ...(profile.medicalHistory && profile.medicalHistory.trim() !== '' && { medicalHistory: profile.medicalHistory.trim() })
+          ...(profile.age !== undefined && { age: profile.age === '' ? null : parseInt(profile.age) }),
+          ...(profile.gender !== undefined && { gender: profile.gender === '' ? '' : profile.gender.toLowerCase().trim() }),
+          ...(profile.medicalHistory !== undefined && { medicalHistory: profile.medicalHistory.trim() })
         }
       };
 
-      console.log('Sending update data to server:', updateData);
       const response = await axios.put(
         'http://localhost:5000/api/auth/profile',
         updateData,
@@ -140,10 +150,7 @@ const Profile = ({ user, onLogout }) => {
           } 
         }
       );
-
-      console.log('Server response:', response.data);
       
-      // Update local state with the response data
       if (response.data.user) {
         setProfile({
           username: response.data.user.username,
@@ -163,56 +170,28 @@ const Profile = ({ user, onLogout }) => {
         isClosable: true,
       });
     } catch (error) {
-      console.error('Update error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        data: error.response?.data,
-        requestData: error.config?.data
+      console.error('Update error:', error);
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to update profile',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
       });
-
-      if (error.response?.status === 401) {
-        toast({
-          title: 'Error',
-          description: 'Session expired. Please login again.',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
-      } else if (error.response?.status === 500) {
-        const errorMessage = error.response?.data?.message || 'Server error occurred';
-        console.error('Server error details:', errorMessage);
-        toast({
-          title: 'Error',
-          description: `Server error: ${errorMessage}. Please check the console for details.`,
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        });
-      } else {
-        toast({
-          title: 'Error',
-          description: `Failed to update profile: ${error.response?.data?.message || error.message}`,
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
-      }
     }
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    console.log('Input change:', { name, value });
-    setProfile((prev) => ({
+    setProfile(prev => ({
       ...prev,
       [name]: value,
     }));
   };
 
   return (
-    <Container maxW="100%" py={8}>
-      <VStack spacing={8} align="stretch" w="100%">
+    <Container maxW="container.md" py={8}>
+      <VStack spacing={8} align="stretch">
         <Flex justify="space-between" align="center">
           <Heading size="lg">Profile</Heading>
           <Button colorScheme="red" onClick={onLogout}>
@@ -270,6 +249,9 @@ const Profile = ({ user, onLogout }) => {
                 </FormControl>
                 <Button colorScheme="blue" onClick={handleUpdate}>
                   Save Changes
+                </Button>
+                <Button onClick={() => setIsEditing(false)}>
+                  Cancel
                 </Button>
               </VStack>
             ) : (

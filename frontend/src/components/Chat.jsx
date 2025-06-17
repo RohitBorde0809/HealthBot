@@ -23,12 +23,13 @@ const Chat = () => {
             const newMessages = [...prevMessages];
             // Mark the message as translating to show loading state or disable button
             if (newMessages[index].sender === 'bot') {
-                newMessages[index] = { ...newMessages[index], isTranslating: true };
+                newMessages[index] = { ...newMessages[index], isTranslating: true, translationError: null };
             }
             return newMessages;
         });
 
         try {
+            console.log('Sending translation request for text:', textToTranslate.substring(0, 100) + '...');
             const response = await axios.post('http://localhost:5000/api/chat/translate', {
                 text: textToTranslate
             }, {
@@ -51,7 +52,8 @@ const Chat = () => {
                         ...newMessages[index],
                         translatedText: response.data.translatedText,
                         showTranslated: true, // Display translated text by default after translation
-                        isTranslating: false
+                        isTranslating: false,
+                        translationError: null
                     };
                 }
                 return newMessages;
@@ -59,13 +61,28 @@ const Chat = () => {
 
         } catch (error) {
             console.error('Translation error:', error);
+            let errorMessage = 'Failed to translate.';
+            
+            if (error.response) {
+                // Handle specific error cases
+                if (error.response.status === 403) {
+                    errorMessage = 'Translation service is not properly configured. Please contact support.';
+                } else if (error.response.status === 429) {
+                    errorMessage = 'Translation quota exceeded. Please try again later.';
+                } else if (error.response.data && error.response.data.message) {
+                    errorMessage = error.response.data.message;
+                }
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
             setMessages(prevMessages => {
                 const newMessages = [...prevMessages];
                 if (newMessages[index].sender === 'bot') {
                     newMessages[index] = {
                         ...newMessages[index],
                         isTranslating: false,
-                        translationError: 'Failed to translate.'
+                        translationError: errorMessage
                     };
                 }
                 return newMessages;
@@ -101,7 +118,7 @@ const Chat = () => {
             // Prepare the full conversation history
             const conversationHistory = messages.map(msg => ({
                 role: msg.sender === 'user' ? 'user' : 'assistant',
-                content: msg.originalText || msg.text // Use originalText if available for bot messages
+                content: msg.originalText || msg.text
             }));
             
             // Add the new user message
@@ -118,7 +135,8 @@ const Chat = () => {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                withCredentials: false // Explicitly set to false
             });
 
             console.log('Received response:', response.data);
@@ -134,29 +152,24 @@ const Chat = () => {
             let errorMessage = 'Sorry, I encountered an error. Please try again.';
             
             if (error.response) {
-                // The request was made and the server responded with a status code
-                // that falls out of the range of 2xx
                 console.error('Error response:', error.response.data);
                 errorMessage = error.response.data.message || errorMessage;
                 
-                // Handle specific error cases
                 if (error.response.status === 401) {
                     errorMessage = 'Your session has expired. Please log in again.';
                 } else if (error.response.status === 429) {
                     errorMessage = 'Too many requests. Please wait a moment before trying again.';
                 }
             } else if (error.request) {
-                // The request was made but no response was received
                 console.error('No response received:', error.request);
                 errorMessage = 'No response from server. Please check your connection.';
             } else {
-                // Something happened in setting up the request
                 console.error('Error setting up request:', error.message);
             }
             
             setMessages(prev => [...prev, { 
                 text: errorMessage, 
-                originalText: errorMessage, // Store original for error messages too
+                originalText: errorMessage,
                 sender: 'bot',
                 error: true 
             }]);
@@ -186,7 +199,7 @@ const Chat = () => {
                                 </div>
                                 {message.sender === 'bot' && !message.error && (
                                     <div className="message-actions">
-                                        {!message.translatedText && (
+                                        {!message.translatedText && !message.translationError && (
                                             <button 
                                                 onClick={() => handleTranslate(index, message.text)} 
                                                 disabled={message.isTranslating}
@@ -204,7 +217,15 @@ const Chat = () => {
                                             </button>
                                         )}
                                         {message.translationError && (
-                                            <span className="translation-error">{message.translationError}</span>
+                                            <div className="translation-error">
+                                                <span>{message.translationError}</span>
+                                                <button 
+                                                    onClick={() => handleTranslate(index, message.text)}
+                                                    className="retry-translation-button"
+                                                >
+                                                    Retry Translation
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 )}

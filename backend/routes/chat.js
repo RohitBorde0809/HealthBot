@@ -2,9 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const chatService = require('../services/chatService');
-
-// In-memory chat store
-const chats = new Map();
+const Chat = require('../models/Chat');
 
 // Authentication middleware
 const auth = async (req, res, next) => {
@@ -35,15 +33,25 @@ const auth = async (req, res, next) => {
 // Get chat history
 router.get('/history', auth, async (req, res) => {
     try {
-        const userChats = Array.from(chats.values())
-            .filter(chat => chat.userId === req.user.id)
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, 50);
+        console.log('Fetching chat history for user:', req.user.id);
+        
+        const userChats = await Chat.find({ user: req.user.id })
+            .sort({ timestamp: -1 })
+            .limit(50);
 
+        console.log(`Found ${userChats.length} chats for user ${req.user.id}`);
         res.json(userChats);
     } catch (error) {
         console.error('Error fetching chat history:', error);
-        res.status(500).json({ error: 'Failed to fetch chat history' });
+        console.error('Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
+        res.status(500).json({ 
+            error: 'Failed to fetch chat history',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
 
@@ -74,16 +82,15 @@ router.post('/', auth, async (req, res) => {
             throw new Error('Invalid response from chat service');
         }
 
-        // Save chat to in-memory store
-        const chatId = Date.now().toString();
-        const chat = {
-            id: chatId,
-            userId: req.user.id,
+        // Save chat to database with translation
+        const chat = new Chat({
+            user: req.user.id,
             message: messages[messages.length - 1].content,
             response: response.choices[0].message.content,
+            translatedResponse: response.choices[0].message.translatedContent,
             timestamp: new Date()
-        };
-        chats.set(chatId, chat);
+        });
+        await chat.save();
         
         res.json(response);
     } catch (error) {
@@ -107,17 +114,55 @@ router.post('/', auth, async (req, res) => {
 // Translate message to Marathi
 router.post('/translate', auth, async (req, res) => {
     try {
+        console.log('Translation request received:', {
+            body: req.body,
+            user: req.user,
+            headers: req.headers
+        });
+
         const { text } = req.body;
         
         if (!text) {
+            console.log('No text provided for translation');
             return res.status(400).json({ message: 'Text to translate is required' });
         }
 
+        console.log('Attempting to translate text:', text.substring(0, 100) + '...');
         const translation = await chatService.translateToMarathi(text);
+        console.log('Translation successful');
+        
         res.json(translation);
     } catch (error) {
         console.error('Translation error:', error);
-        res.status(500).json({ message: 'Failed to translate message' });
+        console.error('Translation error details:', {
+            message: error.message,
+            stack: error.stack,
+            response: error.response?.data,
+            status: error.response?.status
+        });
+
+        // Provide more specific error messages based on the error type
+        let errorMessage = 'Failed to translate message';
+        let statusCode = 500;
+
+        if (error.message.includes('API key')) {
+            errorMessage = 'Translation service is not properly configured';
+            statusCode = 503;
+        } else if (error.response?.status === 403) {
+            errorMessage = 'Translation service access denied';
+            statusCode = 403;
+        } else if (error.response?.status === 429) {
+            errorMessage = 'Translation service quota exceeded';
+            statusCode = 429;
+        }
+
+        res.status(statusCode).json({ 
+            message: errorMessage,
+            details: process.env.NODE_ENV === 'development' ? {
+                originalError: error.message,
+                stack: error.stack
+            } : undefined
+        });
     }
 });
 

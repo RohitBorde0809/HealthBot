@@ -40,9 +40,10 @@ const ChatHistory = () => {
       setIsLoadingChats(true);
       const response = await axios.get(`${API_URL}/api/chat/history`, {
         headers: { 
-          Authorization: `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        withCredentials: false
       });
 
       console.log('Chat history response:', response.data);
@@ -59,6 +60,16 @@ const ChatHistory = () => {
     } finally {
       setIsLoadingChats(false);
     }
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   return (
@@ -89,7 +100,7 @@ const ChatHistory = () => {
             <VStack spacing={4} align="stretch">
               {chatHistory.map((chat) => (
                 <Box 
-                  key={chat.id} 
+                  key={chat._id} 
                   p={4} 
                   borderWidth="1px" 
                   borderRadius="md"
@@ -102,7 +113,7 @@ const ChatHistory = () => {
                 >
                   <Flex justify="space-between" mb={2}>
                     <Badge colorScheme="blue">
-                      {new Date(chat.timestamp).toLocaleString()}
+                      {formatDate(chat.timestamp)}
                     </Badge>
                   </Flex>
                   <Box mb={2}>
@@ -112,6 +123,11 @@ const ChatHistory = () => {
                   <Box>
                     <Text fontWeight="bold" color="green.600">Bot:</Text>
                     <Text>{chat.response}</Text>
+                    {chat.translatedResponse && (
+                      <Text mt={2} color="gray.600">
+                        Translated: {chat.translatedResponse}
+                      </Text>
+                    )}
                   </Box>
                 </Box>
               ))}

@@ -175,4 +175,40 @@
   50% {
     transform: translateY(-5px);
   }
+}
+
+.translation-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  background-color: #fff3f3;
+  border: 1px solid #ffcdd2;
+  border-radius: 4px;
+  color: #d32f2f;
+}
+
+.translation-error span {
+  font-size: 0.9em;
+}
+
+.retry-translation-button {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.2s;
+}
+
+.retry-translation-button:hover {
+  background-color: #d32f2f;
+}
+
+.retry-translation-button:disabled {
+  background-color: #ffcdd2;
+  cursor: not-allowed;
 } 

@@ -11,11 +11,6 @@ class ChatService {
             console.error('ERROR: GEMINI_API_KEY is not set in environment variables');
             throw new Error('Gemini API key is not configured. Please set GEMINI_API_KEY in your .env file');
         }
-        
-        if (!this.translateApiKey) {
-            console.error('ERROR: GOOGLE_TRANSLATE_API_KEY is not set in environment variables');
-            throw new Error('Google Translate API key is not configured. Please set GOOGLE_TRANSLATE_API_KEY in your .env file');
-        }
 
         // Use the latest recommended Gemini model
         this.genAI = new GoogleGenerativeAI(this.geminiApiKey);
@@ -42,11 +37,24 @@ class ChatService {
                 const text = response.text();
                 console.log('Response text:', text);
 
-                // Return the raw response without translation
+                // Try to translate the response to Marathi
+                let translatedText = null;
+                try {
+                    console.log('Attempting to translate response to Marathi...');
+                    const translation = await this.translateToMarathi(text);
+                    translatedText = translation.translatedText;
+                    console.log('Translation successful');
+                } catch (translationError) {
+                    console.error('Translation failed:', translationError);
+                    // Continue without translation
+                }
+
+                // Return both English and Marathi responses
                 return {
                     choices: [{
                         message: {
-                            content: text
+                            content: text,
+                            translatedContent: translatedText
                         }
                     }]
                 };
@@ -57,7 +65,6 @@ class ChatService {
         } catch (error) {
             console.error('Chat service error:', error);
             console.error('Error details:', {
-                message: error.message,
                 stack: error.stack,
                 response: error.response?.data
             });
@@ -68,26 +75,96 @@ class ChatService {
     async translateToMarathi(text) {
         try {
             console.log('Translating text to Marathi:', text);
-            const response = await axios.post('https://translation.googleapis.com/language/translate/v2', {
-                q: text,
-                source: 'en',
-                target: 'mr',
-                key: this.translateApiKey
-            });
+            
+            if (!this.translateApiKey) {
+                console.error('Translation API key is not configured');
+                throw new Error('Translation service is not configured. Please set GOOGLE_TRANSLATE_API_KEY in your .env file');
+            }
 
-            console.log('Translation response:', response.data);
+            // Split text into chunks if it's too long (Google Translate API has a limit)
+            const chunks = this.splitTextIntoChunks(text, 5000);
+            let translatedChunks = [];
+
+            for (const chunk of chunks) {
+                try {
+                    const response = await axios.post(
+                        'https://translation.googleapis.com/language/translate/v2',
+                        {
+                            q: chunk,
+                            source: 'en',
+                            target: 'mr',
+                            format: 'text',
+                            key: this.translateApiKey
+                        },
+                        {
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        }
+                    );
+
+                    if (response.data && response.data.data && response.data.data.translations) {
+                        translatedChunks.push(response.data.data.translations[0].translatedText);
+                    } else {
+                        throw new Error('Invalid translation response format');
+                    }
+                } catch (chunkError) {
+                    console.error('Error translating chunk:', chunkError);
+                    throw chunkError;
+                }
+            }
+
+            // Combine translated chunks
+            const translatedText = translatedChunks.join('\n\n');
+            console.log('Translation successful');
+            
             return {
-                translatedText: response.data.data.translations[0].translatedText
+                translatedText: translatedText
             };
         } catch (error) {
             console.error('Translation error:', error);
             console.error('Translation error details:', {
                 message: error.message,
-                stack: error.stack,
-                response: error.response?.data
+                response: error.response?.data,
+                status: error.response?.status
             });
-            throw new Error('Failed to translate message to Marathi');
+            
+            // Provide a more specific error message
+            if (error.response?.status === 403) {
+                throw new Error('Translation API key is invalid or has insufficient permissions');
+            } else if (error.response?.status === 429) {
+                throw new Error('Translation API quota exceeded. Please try again later');
+            } else if (!this.translateApiKey) {
+                throw new Error('Translation service is not configured. Please set GOOGLE_TRANSLATE_API_KEY in your .env file');
+            } else {
+                throw new Error(`Translation failed: ${error.message}`);
+            }
         }
+    }
+
+    splitTextIntoChunks(text, maxChunkSize) {
+        const chunks = [];
+        let currentChunk = '';
+        
+        // Split by paragraphs first
+        const paragraphs = text.split('\n\n');
+        
+        for (const paragraph of paragraphs) {
+            if (currentChunk.length + paragraph.length + 2 <= maxChunkSize) {
+                currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+            } else {
+                if (currentChunk) {
+                    chunks.push(currentChunk);
+                }
+                currentChunk = paragraph;
+            }
+        }
+        
+        if (currentChunk) {
+            chunks.push(currentChunk);
+        }
+        
+        return chunks;
     }
 }
 

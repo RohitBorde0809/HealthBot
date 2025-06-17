@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }) => {
     axios.defaults.baseURL = API_URL;
     axios.defaults.headers.common['Content-Type'] = 'application/json';
     axios.defaults.headers.common['Accept'] = 'application/json';
-    axios.defaults.withCredentials = true;
+    axios.defaults.withCredentials = false;
     axios.defaults.timeout = 5000; // 5 second timeout
 
     // Add request interceptor for logging
